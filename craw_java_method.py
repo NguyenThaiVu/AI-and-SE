@@ -8,7 +8,7 @@ import javalang
 import pandas as pd
 from dotenv import load_dotenv
 import time
-
+import re
 
 def search_java_repos(n=5, min_star=50, allowed_licenses=None):
     """
@@ -132,6 +132,44 @@ def filter_invalid_methods(methods, min_lines=3, max_lines=100):
     return cleaned
 
 
+def tokenize_code(text):
+    """
+    Function tokenize Java code into variable ([A-Za-z_][A-Za-z0-9_]*), numbers (\d+),
+                        double-quoted strings (".*?"), single-quoted strings ('.*?'), multi-char operators (|==|!=|<=|>=|&&|\|\|)
+                        any single non-whitespace character ([^\s])
+    """
+    return re.findall(r'[A-Za-z_][A-Za-z0-9_]*|\d+|".*?"|\'.*?\'|==|!=|<=|>=|&&|\|\||[^\s]', text, flags=re.S)
+
+
+
+def _brace_matched_end(lines, start_line):
+    """
+    Find the ending line of a method by matching braces.
+
+    Args:
+        lines (list[str]): The source code split into lines.
+        start_line (int): 1-based line number where the method starts.
+
+    Returns:
+        int | None: The line number where the method ends.
+    """
+
+    i = start_line - 1
+    # Find first '{' after the method declaration line(s)
+    open_i = i
+    while open_i < len(lines) and '{' not in lines[open_i]:
+        open_i += 1
+    if open_i >= len(lines): 
+        return None
+    depth = 0
+    for j in range(open_i, len(lines)):
+        depth += lines[j].count('{')
+        depth -= lines[j].count('}')
+        if depth == 0:
+            return j + 1  # 1-based end line inclusive
+    return None
+
+
 def extract_methods_from_file(filepath):
     """Extract methods from a Java file using javalang."""
     try:
@@ -146,12 +184,13 @@ def extract_methods_from_file(filepath):
     for _, node in tree.filter(javalang.tree.MethodDeclaration):
         method_name = node.name
         start_line = node.position.line if node.position else None
-        end_line = None
-        if node.body and node.body[-1].position:
-            end_line = node.body[-1].position.line
+        end_line = _brace_matched_end(lines, start_line) if start_line else None
+        if not start_line or not end_line:
+            continue
         signature = f"{' '.join(node.modifiers)} {node.return_type} {method_name}({', '.join(str(p.type) for p in node.parameters)})"
         original_code = "\n".join(lines[start_line-1:end_line]) if start_line and end_line else ""
-        code_tokens = original_code.split()  # simple whitespace tokenization
+        # code_tokens = original_code.split()  # simple whitespace tokenization
+        code_tokens = tokenize_code(original_code)
         results.append({
             "method_name": method_name,
             "start_line": start_line,
@@ -198,6 +237,8 @@ def build_dataset(n_repos=2, min_star=500, max_files=50, output_csv="java_functi
 
             for f in files[:max_files]:  # avoid crawling too many files
                 commit_sha = get_last_commit(owner, name, f)
+                if not commit_sha:
+                    continue  # skip samples without a concrete SHA
 
                 file_path = local_repo / f
                 if not file_path.exists():

@@ -4,7 +4,7 @@ This project crawls Java methods from top GitHub repositories using the GitHub A
 
 ---
 
-## Features
+## 1. Features
 
 * **Repository**: top Java repositories by stars (with license filtering).
 * **File & commit tracking**: Collects `.java` file paths and their last commit SHA.
@@ -21,11 +21,52 @@ This project crawls Java methods from top GitHub repositories using the GitHub A
   * empty or comment-only methods
   * parsing errors or invalid Java files
 * **Deduplication**: Removes duplicate methods across repos/files.
+* **License Filtering**: only repositories with the following licenses are included: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause
 * **CSV output**: Saves results as `java_functions_dataset.csv`.
+
+### Code Tokenization
+
+In this project, we use a **regex-based tokenizer** to process Java source code into meaningful tokens.
+Unlike plain space-based splitting, this tokenizer preserves the **syntactic structure of code**, which is crucial for analysis and machine learning tasks.
+
+### How it works
+
+The tokenizer breaks code into:
+
+* **Identifiers** (e.g., `main`, `System`, `args`)
+* **Keywords** (e.g., `public`, `class`, `return`)
+* **Numbers** (e.g., `42`)
+* **Strings** (e.g., `"hello"`)
+* **Operators** (e.g., `==`, `!=`, `<=`, `&&`)
+* **Punctuation** (e.g., `{`, `}`, `(`, `)`, `;`)
+
+**Example**
+
+```java
+public static void main(String[] args) { return 5; }
+```
+
+* **Space tokenization** →
+
+  ```
+  ['public', 'static', 'void', 'main(String[]', 'args)', '{', 'return', '5;', '}']
+  ```
+* **Regex code tokenization** →
+
+  ```
+  ['public', 'static', 'void', 'main', '(', 'String', '[', ']', 'args', ')', '{', 'return', '5', ';', '}']
+  ```
+
+**Advantages**
+
+* **Preserves syntax**: operators and braces are captured as separate tokens.
+* **Cleaner tokens**: avoids mixing symbols with identifiers (e.g., `args)` → `args`, `)`).
+* **Model-friendly**: improves consistency for training ML models on code.
+
 
 ---
 
-## 🔹 Requirements
+## 2. Requirements
 
 * Python 3.8+
 * GitHub Personal Access Token (set in `.env` as `GITHUB_TOKEN`)
@@ -37,7 +78,7 @@ This project crawls Java methods from top GitHub repositories using the GitHub A
 
 ---
 
-## 🔹 Usage
+## 3. Usage
 
 1. Set your GitHub token in `.env`:
 
@@ -57,7 +98,7 @@ This project crawls Java methods from top GitHub repositories using the GitHub A
 
 ---
 
-## 🔹 Output Schema
+## 4. Output Data
 
 The CSV contains:
 
@@ -74,13 +115,3 @@ The CSV contains:
 | original\_code | Full code of the method                         |
 | code\_tokens   | Simple whitespace-split tokens                  |
 
----
-
-## 🔹 License Filtering
-
-By default, only repositories with the following licenses are included:
-
-* MIT
-* Apache-2.0
-* BSD-2-Clause
-* BSD-3-Clause
