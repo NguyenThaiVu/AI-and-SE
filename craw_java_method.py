@@ -63,7 +63,7 @@ def get_repo_files(owner, repo, branch="main", extension=".java"):
     return [item["path"] for item in tree if item["type"] == "blob" and item["path"].endswith(extension)]
 
 
-def get_last_commit(owner, repo, filepath):
+def get_last_commit(owner, repo, filepath, branch):
     """
     Get the last commit SHA for a given file.   
     
@@ -78,7 +78,7 @@ def get_last_commit(owner, repo, filepath):
         - commit SHA (string) or None if not found
     """
     url = f"https://api.github.com/repos/{owner}/{repo}/commits"
-    params = {"path": filepath, "per_page": 1}
+    params = {"path": filepath, "sha": branch, "per_page": 1}  # pin to branch
     r = requests.get(url, headers=HEADERS, params=params, timeout=30)
     r.raise_for_status()
     commits = r.json()
@@ -109,22 +109,26 @@ def download_and_extract_repo(owner, repo, branch, dest):
     subfolders = list(extract_dir.iterdir())
     return subfolders[0] if subfolders else extract_dir
 
+def _strip_java_comments_for_check(src: str) -> str:
+    """Using regex to remove comments for validation checks."""
+    return re.sub(r'//.*?$|/\*.*?\*/', '', src, flags=re.M|re.S)
+
 
 def filter_invalid_methods(methods, min_lines=3, max_lines=100):
     """
-    Filter methods by length, content, and validity, including:
-    - Remove empty or comment-only methods
-    - Enforce min and max lines of code
+    Keep comments in code for the dataset, but drop methods that:
+    - Have no non-comment code
+    - Are shorter than min_lines or longer than max_lines (after stripping comments)
     """
     cleaned = []
     for m in methods:
-        code_lines = [l for l in m["original_code"].splitlines() if l.strip()]
+        # remove comments only for the check
+        check_code = _strip_java_comments_for_check(m["original_code"])
+        code_lines = [l for l in check_code.splitlines() if l.strip()]
 
-        # empty or comment-only methods
-        if not any(c.isalnum() for c in m["original_code"]):
-            continue
+        if len(code_lines) == 0:
+            continue  # only comments, no executable code
 
-        # Ensure line length
         if len(code_lines) < min_lines or len(code_lines) > max_lines:
             continue
 
@@ -207,7 +211,7 @@ def deduplicate_methods(df):
         subset=["repo_name", "file_path", "method_name", "original_code"]
     )
 
-def build_dataset(n_repos=2, min_star=500, max_files=50, output_csv="java_functions_dataset.csv", allowed_licenses=None):
+def build_dataset(n_repos=2, min_star=500, max_files=50, output_csv="java_functions_dataset.csv", allowed_licenses=None, max_num_samples=30_000):
     """
     The main function to build the dataset.
     * Arguments:
@@ -223,6 +227,9 @@ def build_dataset(n_repos=2, min_star=500, max_files=50, output_csv="java_functi
     repos = search_java_repos(n_repos, min_star, allowed_licenses)
 
     for repo in repos:
+        if len(all_results) >= max_num_samples:
+            break
+
         try:
             owner, name = repo["full_name"].split("/")
             branch = repo["default_branch"]
@@ -236,16 +243,19 @@ def build_dataset(n_repos=2, min_star=500, max_files=50, output_csv="java_functi
             local_repo = download_and_extract_repo(owner, name, branch, DATA_DIR)
 
             for f in files[:max_files]:  # avoid crawling too many files
-                commit_sha = get_last_commit(owner, name, f)
-                if not commit_sha:
-                    continue  # skip samples without a concrete SHA
-
                 file_path = local_repo / f
                 if not file_path.exists():
                     continue
 
                 methods = extract_methods_from_file(file_path)
                 methods = filter_invalid_methods(methods)
+
+                commit_sha = get_last_commit(owner, name, f, branch)
+                if not commit_sha:
+                    continue  # skip samples without a concrete SHA
+
+                if not methods:
+                    continue
 
                 for m in methods:
                     all_results.append({
@@ -276,7 +286,6 @@ def build_dataset(n_repos=2, min_star=500, max_files=50, output_csv="java_functi
 if __name__ == "__main__":
     load_dotenv()
     TOKEN = os.getenv("GITHUB_TOKEN")
-    print(f"TOken: {TOKEN}")
     if not TOKEN:
         raise SystemExit("❌ Please set GITHUB_TOKEN in your environment.")
 
@@ -286,9 +295,10 @@ if __name__ == "__main__":
 
     DATA_DIR = Path("java_repos") 
 
-    NUM_REPOS = 2
+    NUM_REPOS = 20
     MIN_STAR = 50    
-    MAX_FILES = 10_000
+    MAX_FILES = 100
     OUTPUT_CSV = "java_functions_dataset.csv"
+    MAX_NUM_SAMPLES = 30_000
 
-    df = build_dataset(NUM_REPOS, MIN_STAR, MAX_FILES, OUTPUT_CSV, ALLOWED_LICENSES)
+    df = build_dataset(NUM_REPOS, MIN_STAR, MAX_FILES, OUTPUT_CSV, ALLOWED_LICENSES, MAX_NUM_SAMPLES)

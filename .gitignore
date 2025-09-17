@@ -1,3 +1,5 @@
 .env
 java_repos/
 __pycache__/
+.test.ipynb
+.methods.csv
