@@ -115,3 +115,12 @@ The CSV contains:
 | original\_code | Full code of the method                         |
 | code\_tokens   | Simple whitespace-split tokens                  |
 
+# Dataset preparation
+
+This dataset is split into training and testing subsets for machine learning experiments.
+
+- `dataset/java_method_train.csv`: contains **25,916 samples** (≈80% of the full dataset).
+
+- `dataset/java_method_test.csv`: contains **6,479 samples** (≈20% of the full dataset). 
+
+- The code for this method is in `data_processing.ipynb`

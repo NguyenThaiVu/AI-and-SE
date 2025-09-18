@@ -297,7 +297,7 @@ if __name__ == "__main__":
 
     NUM_REPOS = 20
     MIN_STAR = 50    
-    MAX_FILES = 100
+    MAX_FILES = 1_000
     OUTPUT_CSV = "java_functions_dataset.csv"
     MAX_NUM_SAMPLES = 30_000
 
