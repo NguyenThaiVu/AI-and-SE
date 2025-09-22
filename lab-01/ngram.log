@@ -1,0 +1,5 @@
+nohup: ignoring input
+[INFO] TRAIN: 25916 sequences, TEST: 6479 sequences
+[INFO] Selected N=3 with val_perplexity=385.628859
+[INFO] Test Perplexity of the best model: 393.924220
+Done.

@@ -34,7 +34,7 @@ def load_sequences_from_csv(path: Path) -> List[List[str]]:
 
 
 @dataclass
-class Config:
+class Config: # just a helper class to hold config parameters
     n: int
     k: float
 
@@ -211,11 +211,9 @@ def main():
         w.writerow(['TEST_PERPLEXITY', f'{test_pp:.6f}'])
     print(f"[INFO] Test Perplexity of the best model: {test_pp:.6f}")
 
-    # best_model.json
     (out / 'best_model.json').write_text(
         json.dumps({'N': best.cfg.n, 'k': best.cfg.k}, indent=2), encoding='utf-8')
 
-    # predictions.jsonl (≥1000 from TEST)
     write_predictions_jsonl(best, test, args.num_samples, args.topk, out / 'predictions.jsonl')
 
     print('Done.')
