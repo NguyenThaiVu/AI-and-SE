@@ -5,3 +5,9 @@ test.ipynb
 
 assignment_1/dataset
 assignment_1/.env
+
+assignment_1/if_dataset
+assignment_1/if_mlm_finetuned
+assignment_1/mlm_data_small
+assignment_1/mlm_data
+assignment_1/mlm_model_bert
