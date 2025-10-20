@@ -70,9 +70,12 @@ if __name__ == "__main__":
     })
     vocab_size = len(tok)          
     
+    print(f"Loading datasets from {DATA_DIR}...")
     train_ds = load_split(os.path.join(DATA_DIR, "train.pt"), pad_id=tok.pad_token_id)
     val_ds   = load_split(os.path.join(DATA_DIR, "validation.pt"), pad_id=tok.pad_token_id)
     test_ds  = load_split(os.path.join(DATA_DIR, "test.pt"), pad_id=tok.pad_token_id) 
+    print(f"Done dataset load.")
+    
     
     config = BertConfig(
         vocab_size=vocab_size,
@@ -93,8 +96,8 @@ if __name__ == "__main__":
         per_device_eval_batch_size=16,
         learning_rate=5e-4,
         num_train_epochs=3,  # TODO: increase this after debugging
-        logging_steps=1_000,
-        save_steps=500,
+        logging_steps=50_000,
+        save_steps=50_000,
         fp16=torch.cuda.is_available(),
     )
     
