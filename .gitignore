@@ -2,3 +2,6 @@
 java_repos/
 __pycache__/
 test.ipynb
+
+assignment_1/dataset
+assignment_1/.env
