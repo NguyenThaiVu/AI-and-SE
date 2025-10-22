@@ -11,3 +11,8 @@ assignment_1/if_mlm_finetuned
 assignment_1/mlm_data_small
 assignment_1/mlm_data
 assignment_1/mlm_model_bert
+
+assignment_1/tokenizer_t5_code
+assignment_1/t5_code_pretrained
+assignment_1/t5_if_finetuned
+assignment_1/t5_if_finetuned_backup
