@@ -1,20 +1,5 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 """
-Continue-pretrain T5 on Python code using span-corruption (T5 denoising).
-- Uses your custom SentencePiece tokenizer directory (with extra_ids).
-- Uses Hugging Face's DataCollatorForT5MLM to create masked spans on the fly.
-
-Usage:
-  python pretrain_t5_span_corruption.py \
-      --tokenizer_dir tokenizer_t5_code \
-      --output_dir t5_code_pretrained \
-      --base_model t5-small
-
-Notes:
-- Put your Python functions in the FUNCTIONS list below, or pass text files via --input_files.
-- Start with t5-small to validate the pipeline; scale up once it works.
+This script train the pretrain T5 model on Python code using span-corruption.
 """
 
 import argparse
@@ -27,23 +12,20 @@ import numpy as np
 import torch
 from datasets import Dataset, load_dataset, concatenate_datasets
 from transformers import (
-    T5Tokenizer,  # or T5TokenizerFast if you prefer
+    T5Tokenizer,
     T5ForConditionalGeneration,
     TrainingArguments,
     Trainer,
     set_seed,
 )
-
 from t5_span_collator import DataCollatorForT5SpanCorruption
 
 # ------------------- Read dataset -------------------------------
 
 PATH_FILE_DATA = os.path.join(os.getcwd(), "dataset", "processed", "processed_data.csv")
-
 df = pd.read_csv(PATH_FILE_DATA)
 list_python_function = df["method_code"].tolist()
-
-FUNCTIONS = list_python_function[:500_000]  # Limit for testing
+FUNCTIONS = list_python_function[:]
 
 # ---------------------------------------------------------------------
 
@@ -60,7 +42,6 @@ def read_text_files(paths: List[str]) -> List[str]:
 
 
 def make_dataset(functions: List[str]) -> Dataset:
-    # One function per row under "text"
     return Dataset.from_dict({"text": functions})
 
 
@@ -96,22 +77,20 @@ def main():
     parser.add_argument("--noise_density", type=float, default=0.15)
     parser.add_argument("--mean_span_length", type=float, default=3.0)
     parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--epochs", type=int, default=5)  # TODO: increase 
+    parser.add_argument("--epochs", type=int, default=5)  # TODO: increase
     parser.add_argument("--lr", type=float, default=1e-3)  # good with Adafactor for T5
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     set_seed(args.seed)
 
-    # -------- Load tokenizer (your custom SentencePiece + extra_ids) --------
-    # Prefer slow tokenizer for simplicity/robustness with SPM; fast also works.
+    # -------- Load tokenizer --------
     tokenizer = T5Tokenizer.from_pretrained(args.tokenizer_dir, use_fast=False)
 
-    # Safety: make sure special IDs are set
     if tokenizer.pad_token is None:
         tokenizer.add_special_tokens({"pad_token": "<pad>"})
 
-    # -------- Load base T5 and resize embeddings to tokenizer size --------
+    # -------- Load base T5 architecture --------
     model = T5ForConditionalGeneration.from_pretrained(args.base_model)
     model.resize_token_embeddings(len(tokenizer))  # important when vocab size differs
 
@@ -137,18 +116,14 @@ def main():
     # -------- Collator that performs span corruption on-the-fly --------
     collator = DataCollatorForT5SpanCorruption(
         tokenizer=tokenizer,
-        noise_density=args.noise_density,  # e.g., 0.15
-        mean_span_length=args.mean_span_length,  # e.g., 3.0
-        input_length=args.input_length,  # e.g., 512
-        target_length=args.target_length,  # e.g., 128
+        noise_density=args.noise_density,
+        mean_span_length=args.mean_span_length,
+        input_length=args.input_length,
+        target_length=args.target_length,
         seed=args.seed,
     )
     # -------- Training setup --------
     # Adafactor is lightweight and standard for T5
-    # Use fp16 (or bf16) if your GPU supports it
-    use_bf16 = (
-        torch.cuda.is_available() and torch.cuda.get_device_capability(0)[0] >= 8
-    )  # Ampere+
     training_args = TrainingArguments(
         output_dir=args.output_dir,
         per_device_train_batch_size=args.batch_size,
@@ -158,8 +133,6 @@ def main():
         save_steps=1_000,
         save_total_limit=3,
         report_to="none",
-        fp16=(torch.cuda.is_available() and not use_bf16),
-        bf16=use_bf16,
         optim="adafactor",
     )
 
@@ -170,13 +143,11 @@ def main():
         data_collator=collator,
     )
 
-    # -------- Train --------
     trainer.train()
 
     # -------- Save (model + tokenizer together) --------
     trainer.save_model(args.output_dir)
     tokenizer.save_pretrained(args.output_dir)
-
     print("\n[OK] Pretraining finished.")
     print(f"Saved to: {args.output_dir}")
 
