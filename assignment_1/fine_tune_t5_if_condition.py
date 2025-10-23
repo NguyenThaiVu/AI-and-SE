@@ -30,62 +30,6 @@ def _mask_span_by_pos(code: str, start_line: int, start_col: int, end_line: int,
     return before + sentinel + after
 
 
-# def extract_and_mask_first_if(code: str) -> Optional[Tuple[str, str]]:
-#     """
-#     Returns (masked_code, condition_text) for the first 'if' in the first def.
-#     Tries AST first (preferred), falls back to a regex if AST unparsing fails.
-#     """
-#     code = code.strip()
-#     if not code:
-#         return None
-
-#     # Prefer AST (handles whitespace/parens better)
-#     try:
-#         import ast
-#         tree = ast.parse(code)
-
-#         class Finder(ast.NodeVisitor):
-#             def __init__(self):
-#                 self.cond_src = None
-
-#             def visit_FunctionDef(self, node: ast.FunctionDef):
-#                 if self.cond_src is None:
-#                     self.generic_visit(node)
-
-#             def visit_If(self, node: ast.If):
-#                 if self.cond_src is None:
-#                     try:
-#                         self.cond_src = ast.unparse(node.test)
-#                     except Exception:
-#                         self.cond_src = None
-#                 # stop after the first if
-#                 return
-
-#         f = Finder()
-#         f.visit(tree)
-#         if f.cond_src:
-#             test_pat = re.escape(f.cond_src)
-#             # Replace first "if <cond>:" with sentinel
-#             pat = r"(if\s+)" + test_pat + r"(\s*:)"
-#             masked, n = re.subn(pat, r"\1" + SENTINEL + r"\2", code, count=1)
-#             if n > 0:
-#                 return masked, f.cond_src
-#     except Exception:
-#         pass
-
-#     # Fallback regex: first line that looks like `if ... :`
-#     m = re.search(r"(?m)^\s*if\s+(?P<cond>.+?)\s*:\s*$", code)
-#     if m:
-#         cond = m.group("cond")
-#         # Replace only within that match span to avoid accidental other replacements
-#         start, end = m.span()
-#         line = code[start:end]
-#         line_masked = line.replace(cond, SENTINEL, 1)
-#         masked = code[:start] + line_masked + code[end:]
-#         return masked, cond.strip()
-
-#     return None
-
 def extract_mask_all_ifs(code: str) -> List[Tuple[str, str]]:
     """
     Return (masked_code, cond_text) for EVERY ast.If in EVERY function in 'code'.

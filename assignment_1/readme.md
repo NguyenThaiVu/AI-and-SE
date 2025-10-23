@@ -9,6 +9,7 @@ Our approach consists of three major stages:
 1. **Data Crawling** – Collect Python code samples from open-source repositories (GitHub).
 2. **Pretraining** – Pretraining a T5 model on large Python corpus using a span-corruption (masked language modeling) objective.
 3. **Fine-tuning** – Take the pretrained model, further fine-tuning it for the `if`-condition prediction task.
+4. **Conclusion** and **Discussion**
 
 ## 1. Data Crawling and Tokenization
 
@@ -141,42 +142,180 @@ The table below is the summarize of T5 pre-train process.
 ## 3. Fine-tuning: 
 
 
-### 3.1 Build Fine-tuning Dataset
+### 3.1 Build Dataset
 
+
+**Masking if condition**
+* For each Python function string, I parse the AST and visit every `ast.If` node (this includes `elif` and nested `if`s).
+* For each `if`, I replace the character with the sentinel `<extra_id_0>` (everything else stays intact).
+* Result:
+  * **Input (source)**:
+
+    ```
+    "predict_if_condition: " + def check_function(x):
+        if <extra_id_0>>:
+            return "positive"
+        else:
+            return "negative" 
+    ```
+  * Target (label):
+    ```
+    x > 0
+    ```
+
+**Build dataset**
+* The function `build_pairs_from_list` loops all functions, applies the extraction above, and builds pairs (input, output) for each if condition.
+* I use `DataCollatorForSeq2Seq` with `label_pad_token_id = -100`, so padded label positions are ignored in the loss.
 
 
 #### 3.2 Fine-tune the Model
 
+**Main Idea**
+* Fine-tuning T5 as a seq2seq model, where input = masked function text (with <extra_id_0>) and target = the original condition string.
 
-**Output:**
+* Loss is standard cross-entropy between generated tokens and label tokens (padded positions masked as -100).
 
+**How does the model is predicted?**
+* The seq2seq model consists: 
+    * Encoder input: the entire masked function text.
+    * Decoder input: starts with <start_token>, then predicts each next token of the condition until the <end-of-sequence> token.
+* For example:
+    * If the condition is: ```x > 0 and y < 10```. 
+    * The model will predict: ```["x", ">", "0", "and", "y", "<", "10"]```.
 
+**Hyper-parameter**
+* Max input sequence lengths: max_src_len=512.
+* Max output sequenceL max_tgt_len=128.
+* Optimizer "adamw", LR = 5e-5, weight_decay = 0.01. Those are standard T5 fine-tune defaults.
+* Train_epochs=5: avoid long training with a large corpus.
+
+# Handling functions that don’t contain `if` statements
+
+## Policy
+
+**Training time**: 
+* I discard functions that do not contain any `if` statements.
+* Rationale: The task is to learn to **reconstruct an `if` condition**. Samples without an `if` cannot produce a (masked_code → condition) pair.
+* Data sufficiency: Our corpus yields ~**250k** valid (masked, condition) pairs, so excluding no `if` functions does **not** harm coverage.
+
+**Inference time:**
+* Before querying the model, we **check the AST** of the input function.
+  * If `if` exists: we mask the `if` and run prediction.
+  * If no `if` exists: we return `None` (or raise a clean error), and do not call the model.
 
 ---
 
-### 4. Example Inference
+**One-liner summary:**
+
+> We **exclude** no-`if` functions during training (no supervision signal), and at inference we **AST-check**: if there’s no `if`, we **don’t generate** and return a clear “no-if” outcome.
+
+
+---
+### 3.3. Example Inference
 
 **Input:**
 
 ```python
-def classify(x):
+def check_function(x):
+    if <mask>:
+        return "even"
+    else:
+        return "odd"
+```
+
+**Model Prediction:**
+
+```
+x % 2 == 0
+```
+
+## 4. Evaluation and discussion
+
+### 4.1. Evaluation
+
+In this section, I will evaluate the fine-tuned model’s performance, we use two main metrics: Exact Match (EM) and BLEU Score.
+
+**Exact Match (EM)**
+- This metric measures how the model’s predicted condition exactly matches the ground-truth condition after normalization (removing extra spaces, formatting differences, etc.).
+- It provides a strict measurement — a prediction is correct only if it reproduces the exact condition.
+- Example:
+
+| True Condition | Predicted Condition | Exact Match |
+| -------------- | ------------------- | ----------- |
+| `x > 0`        | `x > 0`             | ✅           |
+| `x > 0`        | `x >= 0`            | ❌           |
+
+---
+
+**BLEU Score**
+- BLEU (Bilingual Evaluation Understudy) measures n-gram overlap between the predicted and true condition strings.
+- It captures partial correctness - useful when predictions are semantically close but not identical.
+- Example:
+
+| True Condition        | Predicted Condition | BLEU |
+| --------------------- | ------------------- | ---- |
+| `x > 0 and y < 5`     | `x > 0 and y <= 5`  | 0.85 |
+| `isinstance(x, list)` | `type(x) == list`   | 0.62 |
+
+
+The table evaluation of 
+# TODO
+
+
+### 4.2. Discussion
+
+While both exact match and BLEU Score provide useful quantitative indicators of model performance, both have notable limitations when applied to code prediction tasks such as `<if>` condition generation.
+
+**Exact Match**
+- It is overly strict — even a minor formatting difference or logically equivalent variation (e.g., `x > 0` vs. `x>=0`, or extra parentheses) is treated as completely incorrect.
+- Thus, Exact Match can underestimate model quality by penalizing predictions that are *semantically correct* but *syntactically different*.
+
+**Example:**
+
+| Gold    | Prediction | EM Result                             |
+| ------- | ---------- | ------------------------------------- |
+| `x > 0` | `x >= 1`   | ❌ (different literal but same intent) |
+| `x > 0` | `(x > 0)`  | ❌ (extra parentheses only)            |
+
+---
+
+**BLEU Score**
+- BLEU offer a softer metric than Exact Match. It rewards partial correctness and shared token sequences.
+- However, BLEU still fails to capture logical meaning — it only looks at surface-level text similarity.
+
+**Example:**
+
+```python
+def check_function(x):
     if <mask>:
         return "positive"
     else:
         return "negative"
 ```
 
-**Model Prediction:**
+If the model predicts **`x == 'positive'`** instead of the correct **`x > 0`**,
+BLEU may still assign a moderate score because both contain overlapping tokens (`x`, comparison operator, literal).
 
-```
-x > 0
-```
+
+**Summary:**
+* Exact Match: measures syntactic precision but ignores semantic equivalence.
+* BLEU: captures partial token overlap but ignores logical correctness.
+
 
 ---
 
-### 5. Summary
+## 5. Conclusion
 
-| Stage        | Dataset                | Model               | Goal                        |
-| ------------ | ---------------------- | ------------------- | --------------------------- |
-| Pre-training | 100k+ Python functions | BERTCode            | Learn general code patterns |
-| Fine-tuning  | Masked `if` dataset    | Fine-tuned BERTCode | Predict masked condition    |
+This project explored the use of T5 language models for understanding and generating Python code, specifically predicting the masked `if` condition in a function.
+
+The work followed a three-stage pipeline:
+
+1. **Data Collection:**
+   Large-scale Python functions were crawled from GitHub and processed into clean training samples.
+2. **Pre-training:**
+   A base T5 model was further trained on Python code using **span corruption**, helping it learn the syntax and structure of real-world code.
+3. **Fine-tuning:**
+   The pre-trained model was fine-tuned to predict missing `if` conditions, turning this into a **sequence-to-sequence generation** task.
+
+Model performance was evaluated using **Exact Match** and **BLEU Score** to measure syntactic accuracy and partial similarity.
+
