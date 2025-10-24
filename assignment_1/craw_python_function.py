@@ -101,23 +101,24 @@ def download_and_extract_repo(owner, repo, header, branch, dest):
         with zipfile.ZipFile(zip_path, "r") as z:
             z.extractall(extract_dir)
 
-        # ✅ Delete the zip file after extraction
+        # Delete the zip file after extraction
         zip_path.unlink(missing_ok=True)
         print(f"[CLEANUP] Deleted zip: {zip_path}")
 
-        # Return the extracted repo folder (GitHub zips always contain one root folder)
+        # Return the extracted repo folder
         subfolders = list(extract_dir.iterdir())
         if len(subfolders) == 1 and subfolders[0].is_dir():
             return subfolders[0]
         return extract_dir
 
     except Exception as e:
-        # On failure, clean up partially downloaded zip or extraction dir
         if zip_path.exists():
             zip_path.unlink(missing_ok=True)
         if extract_dir.exists():
             shutil.rmtree(extract_dir, ignore_errors=True)
-        raise RuntimeError(f"Failed to download/extract repo {owner}/{repo}@{branch}: {e}")
+        raise RuntimeError(
+            f"Failed to download/extract repo {owner}/{repo}@{branch}: {e}"
+        )
 
 
 def deduplicate_methods(df):
@@ -136,7 +137,7 @@ def extract_python_methods(file_path):
             if isinstance(node, ast.FunctionDef):
                 methods.append(ast.get_source_segment(code, node))
     except:
-        pass  # skip files with syntax errors
+        pass
     return methods
 
 
@@ -151,7 +152,7 @@ def _worker(args) -> Optional[List[Dict]]:
         if not os.path.isfile(full_path):
             return None
 
-        methods = extract_python_methods(full_path)  # must be importable / top-level
+        methods = extract_python_methods(full_path)
         if not methods:
             return []
 
@@ -169,8 +170,15 @@ def _worker(args) -> Optional[List[Dict]]:
     except Exception as e:
         return None
 
-def extract_python_method_parallel(files: list, local_repo_path: str, repo_name: str,
-    repo_url: str, max_workers: int | None = None, chunksize: int = 32) -> list:
+
+def extract_python_method_parallel(
+    files: list,
+    local_repo_path: str,
+    repo_name: str,
+    repo_url: str,
+    max_workers: int | None = None,
+    chunksize: int = 32,
+) -> list:
     """
     Parallelize over files using processes (good for CPU-bound AST parsing).
     """
@@ -179,7 +187,7 @@ def extract_python_method_parallel(files: list, local_repo_path: str, repo_name:
 
     with ProcessPoolExecutor(max_workers=max_workers) as ex:
         for res in ex.map(_worker, tasks, chunksize=chunksize):
-            if res:  # None or [] are both fine; [] adds nothing
+            if res:
                 all_results.extend(res)
 
     return all_results
@@ -192,15 +200,21 @@ def _fetch_one_repos(repo):
     repo_url = repo["html_url"]
 
     print(f"\n[FETCH] {repo['full_name']} (branch={repo_branch})")
-    local_repo_path = download_and_extract_repo(owner, name, HEADERS, repo_branch, DATA_DIR_RAW)
+    local_repo_path = download_and_extract_repo(
+        owner, name, HEADERS, repo_branch, DATA_DIR_RAW
+    )
     print(f"[OK] Extracted -> {local_repo_path}")
 
     files = get_repo_files(
-        owner, name, HEADERS, repo_branch,
-        extension=FILE_EXTENSION, max_files=MAX_FILE_PER_REPO,
+        owner,
+        name,
+        HEADERS,
+        repo_branch,
+        extension=FILE_EXTENSION,
+        max_files=MAX_FILE_PER_REPO,
     )
     print(f"[OK] {repo['full_name']}: found {len(files)} {FILE_EXTENSION} files")
-    time.sleep(1)  # to avoid rate limits
+    time.sleep(1)
     return repo["full_name"], str(local_repo_path), files, repo_url
 
 
@@ -208,7 +222,7 @@ if __name__ == "__main__":
     load_dotenv()
     TOKEN = os.getenv("GITHUB_TOKEN")
     if not TOKEN:
-        raise SystemExit("❌ Please set GITHUB_TOKEN in your environment.")
+        raise SystemExit("[ERROR] Please set GITHUB_TOKEN in your environment.")
 
     HEADERS = {
         "Authorization": f"Bearer {TOKEN}",
@@ -246,11 +260,14 @@ if __name__ == "__main__":
             try:
                 list_downloaded_repos.append(fut.result())
             except Exception as e:
-                print(f"[ERROR] Fetch failed for {repo.get('full_name','<unknown>')}: {e}")
-            
-                
+                print(
+                    f"[ERROR] Fetch failed for {repo.get('full_name','<unknown>')}: {e}"
+                )
+
     # --- Stage 2: parse per repo in parallel ---
-    for idx, (repo_full_name, local_repo_path, files, repo_url) in enumerate(list_downloaded_repos):
+    for idx, (repo_full_name, local_repo_path, files, repo_url) in enumerate(
+        list_downloaded_repos
+    ):
         if (idx + 1) % 10 == 0:
             df = pd.DataFrame(all_results)
             df = deduplicate_methods(df)
@@ -260,22 +277,25 @@ if __name__ == "__main__":
 
             df.to_csv(output_raw_csv, index=False)
             print(f"[SAVE] Dataset saved to {output_raw_csv} at {len(df)} samples")
-            
-            all_results = []  # Clear to save memory
-        
+            all_results = []
+
         try:
             if not files:
                 continue
 
             res = extract_python_method_parallel(
-                files, local_repo_path, repo_full_name, repo_url,
-                max_workers=NUM_THREADS, chunksize=32,
+                files,
+                local_repo_path,
+                repo_full_name,
+                repo_url,
+                max_workers=NUM_THREADS,
+                chunksize=32,
             )
             print(f"[DONE] {repo_full_name}: extracted {len(res)} methods")
             all_results.extend(res)
-            
-            time.sleep(1)  # to avoid rate limits
-            
+
+            time.sleep(1)
+
         except Exception as e:
             print(f"[ERROR] Parse failed for {repo_full_name}: {e}")
 

@@ -77,20 +77,18 @@ def main():
     parser.add_argument("--noise_density", type=float, default=0.15)
     parser.add_argument("--mean_span_length", type=float, default=3.0)
     parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--epochs", type=int, default=5)  # TODO: increase
-    parser.add_argument("--lr", type=float, default=1e-3)  # good with Adafactor for T5
+    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
     set_seed(args.seed)
 
-    # -------- Load tokenizer --------
     tokenizer = T5Tokenizer.from_pretrained(args.tokenizer_dir, use_fast=False)
-
     if tokenizer.pad_token is None:
         tokenizer.add_special_tokens({"pad_token": "<pad>"})
 
-    # -------- Load base T5 architecture --------
+    # Load base T5 architecture
     model = T5ForConditionalGeneration.from_pretrained(args.base_model)
     model.resize_token_embeddings(len(tokenizer))  # important when vocab size differs
 
@@ -101,9 +99,8 @@ def main():
     if model.config.decoder_start_token_id is None:
         model.config.decoder_start_token_id = model.config.pad_token_id
 
-    # -------- Build dataset from list and/or files --------
+    # -------- Build dataset from list --------
     funcs = [s.strip() for s in FUNCTIONS if s and s.strip()]
-
     ds = make_dataset(funcs)
 
     # Tokenize ONLY to get input_ids; collator will create masked inputs/labels
@@ -122,8 +119,8 @@ def main():
         target_length=args.target_length,
         seed=args.seed,
     )
+
     # -------- Training setup --------
-    # Adafactor is lightweight and standard for T5
     training_args = TrainingArguments(
         output_dir=args.output_dir,
         per_device_train_batch_size=args.batch_size,

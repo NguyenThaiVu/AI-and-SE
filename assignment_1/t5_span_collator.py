@@ -1,4 +1,7 @@
-# t5_span_collator.py
+"""
+This is just a helper data collator implementing T5-style span corruption.
+"""
+
 import math, random
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
@@ -12,8 +15,6 @@ class DataCollatorForT5SpanCorruption:
     - Replaces ~noise_density of tokens with sentinel tokens (<extra_id_k>) in inputs.
     - Targets are concatenation of the removed spans, each preceded by its sentinel.
     - Pads/trim inputs to `input_length` and targets to `target_length`.
-
-    Assumes tokenizer has extra_ids >= number of spans you’ll create, e.g., 100.
     """
     tokenizer: Any
     noise_density: float = 0.15
@@ -27,15 +28,10 @@ class DataCollatorForT5SpanCorruption:
         random.seed(self.seed)
         self.pad_id = self.tokenizer.pad_token_id
         assert self.pad_id is not None, "Tokenizer must have pad_token_id"
-        # T5 sentinels are <extra_id_0>..<extra_id_N>. We’ll map spans to these.
-        # Convention: start from <extra_id_0> and increment for each span in order.
         self.sentinel_id = lambda k: self.tokenizer.convert_tokens_to_ids(f"<extra_id_{k}>")
-
-    # --------- helpers (ported from T5 paper/utils logic) ---------
 
     def _random_segmentation(self, num_items, num_segments):
         """Randomly partition num_items into num_segments positive lengths."""
-        # sample num_segments-1 cut points from [1..num_items-1]
         if num_segments <= 1:
             return [num_items]
         cuts = sorted(random.sample(range(1, num_items), num_segments - 1))
@@ -91,18 +87,17 @@ class DataCollatorForT5SpanCorruption:
         last = 0
         span_idx = 0
         for s, e in zip(starts.tolist(), ends.tolist()):
-            # copy non-noise region before this noise span
             enc.extend(tokens[last:s][~mask[last:s]].tolist())
-            # insert sentinel
             enc.append(self.sentinel_id(span_idx))
             last = e
             span_idx += 1
+        
         # tail non-noise
         enc.extend(tokens[last:][~mask[last:]].tolist())
         if not enc:
-            # avoid empty input (shouldn't happen with our min noise logic)
+            # avoid empty input
             enc = [self.sentinel_id(0)]
-        # Add EOS if tokenizer uses one in pretraining (optional for T5)
+
         enc = torch.tensor(enc, dtype=torch.long)
 
         # Decoder target: for each noise span, prepend sentinel_k then the noisy tokens
@@ -112,14 +107,13 @@ class DataCollatorForT5SpanCorruption:
             dec.append(self.sentinel_id(span_idx))
             dec.extend(tokens[s:e].tolist())
             span_idx += 1
-        # Finally, end with EOS if desired (T5 often uses EOS during denoising)
+        
+        # End with EOS if desired
         dec = torch.tensor(dec, dtype=torch.long)
         return enc, dec
 
-    # --------- main collate ---------
 
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
-        # Features already have tokenized "input_ids" (we ignore provided attention_mask)
         batch_input_ids = [torch.tensor(f["input_ids"], dtype=torch.long) for f in features]
         out_input_ids, out_attention_mask, out_labels = [], [], []
 
@@ -129,10 +123,8 @@ class DataCollatorForT5SpanCorruption:
             if ids.numel() > self.input_length - 1:
                 ids = ids[: self.input_length - 1]
 
-            # build a working sequence with no pads (we’ll pad at the end)
             length = ids.numel()
-            # Ensure at least 2 tokens to mask around
-            length = max(length, 2)
+            length = max(length, 2)  # Ensure at least 2 tokens to mask
             if ids.numel() < length:
                 ids = torch.cat([ids, torch.full((length - ids.numel(),), self.pad_id, dtype=torch.long)])
 
