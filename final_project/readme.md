@@ -6,7 +6,7 @@ Predicting whether a piece of code will pass a given test case without executing
 
 ## LLM generate code
 
-**Problem definition**
+### Problem definition
 We have: 
 - A natural language describe the task.
 - Function signature.
@@ -14,14 +14,39 @@ We have:
 
 The LLM takes a text prompt and outputs a code snippet
 
-
-
 Using LLM to generate code. 
 List of LLM:
 - GPT4o
 - Llama 3.1 (8B)
 - Qwen 2.5 (7B)
 - Deepseek Coder (7B)
+
+### Improve LLM output
+You want to improve your LLM’s ability to solve coding problems by giving it: Chain-of-Thought reasoning (make the LLM think step-by-step before writing code). Few-shot demonstrations (Provide 1–3 solved examples so the model understands the pattern)
+
+**Chain-of-Thought (CoT) for Code Generation**
+Chain-of-Thought prompting means: Instead of asking the model to directly output code, you ask it to first reason through the problem, then write the code. Models generate much better and more correct code when they explicitly reason.
+
+**Demonstrations (Few-Shot Learning)**
+Few-Shot Learning mean: give the model 1–3 solved example problems before it solves the target one. It teaches the model the format of the prompt and expected output.
+
+**Test Driven Development (TDD) for Code Generation**
+Focus: investigates how giving LLMs test cases improves code generation
+
+
+I would frame your research questions roughly like:
+
+- RQ1: How much does CoT alone help code generation?
+
+- RQ2: How much do few-shot demonstrations help?
+
+- RQ3: How much test driven development help?
+
+- Measure in:
+    + Accuracy
+    + Number of output tokens.
+    + Time generation
+
 
 
 ## Code Evaluation using Vector Representation
