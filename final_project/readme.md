@@ -22,13 +22,10 @@ List of LLM:
 - Deepseek Coder (7B)
 
 ### Improve LLM output
-You want to improve your LLM’s ability to solve coding problems by giving it: Chain-of-Thought reasoning (make the LLM think step-by-step before writing code). Few-shot demonstrations (Provide 1–3 solved examples so the model understands the pattern)
+You want to improve your LLM’s ability to solve coding problems by giving it: Chain-of-Thought reasoning (make the LLM think step-by-step before writing code). Test driven development.
 
 **Chain-of-Thought (CoT) for Code Generation**
 Chain-of-Thought prompting means: Instead of asking the model to directly output code, you ask it to first reason through the problem, then write the code. Models generate much better and more correct code when they explicitly reason.
-
-**Demonstrations (Few-Shot Learning)**
-Few-Shot Learning mean: give the model 1–3 solved example problems before it solves the target one. It teaches the model the format of the prompt and expected output.
 
 **Test Driven Development (TDD) for Code Generation**
 Focus: investigates how giving LLMs test cases improves code generation
